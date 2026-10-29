@@ -158,6 +158,21 @@ dialog::backdrop{background:rgba(15,20,30,.55)}
 .comment small{display:block;color:var(--ink2);font-size:12px}
 .empty{color:var(--ink2);font-size:13.5px;padding:10px 0}
 footer{color:var(--ink2);font-size:12.5px;padding:24px 0 40px;border-top:1px solid var(--line)}
+.callout{background:#1F2B45;color:#F3F1EB;border-radius:10px;padding:22px 24px;margin-bottom:20px;display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:24px}
+@media (max-width:860px){.callout{grid-template-columns:1fr}}
+.callout h2{color:#F3F1EB;font-size:22px}
+.callout p{margin:0 0 10px;color:rgba(243,241,235,.82);font-size:14.5px;max-width:62ch}
+.callout blockquote{margin:0 0 10px;padding:10px 14px;background:rgba(255,255,255,.07);border-radius:6px;font-size:14.5px}
+.callout blockquote small{display:block;opacity:.7;font-size:12px;margin-top:2px}
+.callout .seg{background:transparent;border-color:rgba(243,241,235,.35)}
+.callout .seg button{color:rgba(243,241,235,.8)}
+.callout .seg button[aria-pressed="true"]{background:#F3F1EB;color:#1F2B45}
+.thq{margin:6px 0 0;padding:0;list-style:none;display:grid;gap:6px}
+.thq li{font-size:13.5px;padding:6px 10px;background:var(--surface2);border-radius:5px}
+.thq li small{color:var(--ink2);font-size:12px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:3px 10px;font-size:12.5px;cursor:pointer;color:var(--ink2)}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:20px}
 @media (max-width:860px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .kpi{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
@@ -198,6 +213,7 @@ footer{color:var(--ink2);font-size:12.5px;padding:24px 0 40px;border-top:1px sol
 <nav class="controls" aria-label="Dashboard views"><div class="wrap">
   <div class="tabs" role="tablist">
     <button class="tab" role="tab" data-tab="drivers" aria-selected="true">Fit drivers</button>
+    <button class="tab" role="tab" data-tab="comments">Fit comments</button>
     <button class="tab" role="tab" data-tab="styles">Every style</button>
     <button class="tab" role="tab" data-tab="mens">Men's</button>
     <button class="tab" role="tab" data-tab="womens">Women's</button>
@@ -214,6 +230,7 @@ footer{color:var(--ink2);font-size:12.5px;padding:24px 0 40px;border-top:1px sol
 
 <main class="wrap">
   <section class="panel" id="p-drivers"></section>
+  <section class="panel" id="p-comments" hidden></section>
   <section class="panel" id="p-styles" hidden></section>
   <section class="panel" id="p-mens" hidden></section>
   <section class="panel" id="p-womens" hidden></section>
@@ -242,7 +259,7 @@ const PARETO_COLORS=["#1F2B45","#2C3D5E","#3A5076","#4A638C","#5B76A0","#6D88B1"
 
 /* ---------- state ---------- */
 let RET=[], FB=[], STYLES=new Map();
-const S={dvSort:"vol",gender:"All",minVol:100,tab:"drivers",sort:{key:"jdf",dir:-1},q:"",cat:"All"};
+const S={cSrc:null,cTheme:"All",cQ:"",cLimit:60,dvSort:"vol",gender:"All",minVol:100,tab:"drivers",sort:{key:"jdf",dir:-1},q:"",cat:"All"};
 
 /* ---------- helpers ---------- */
 const $=s=>document.querySelector(s);
@@ -416,6 +433,92 @@ function drawDiverge(list,avg){
   </div>`;
 }
 
+/* ---------- Fit comments tab ---------- */
+const THEMES=[
+ ["Too big overall","Customers say the whole garment is too big, oversized, baggy or loose.",/\b(too big|big|bigg?er|large|larger|huge+|enormous|massive|giant|gigantic|oversi[sz]ed|baggy|baggier|loose|roomy|swallow\w*|bulky|lost in it|too much (fabric|material))\b/i],
+ ["Too long","Length is the problem: body, sleeves, hem or inseam.",/\b(too long|long|longer|length|floor|drag\w*)\b/i],
+ ["Wide or boxy","Comments about width and a boxy or tent-like shape.",/\b(wide|wider|boxy|width|tent|square|too full)\b/i],
+ ["Sleeves and armholes","Armholes too big or low, sleeves too long, wide or puffy.",/\b(arm ?holes?|arms?|sleeves?|under ?arms?|pits?|puffy)\b/i],
+ ["Chest and shoulders","Fit through the chest, bust, shoulders or neckline.",/\b(chest|shoulders?|bust|necks?|neckline)\b/i],
+ ["Waist, hips and legs","Fit through the waist, hips, rise, seat or legs.",/\b(waist\w*|hips?|stomach|belly|mid ?section|rise|thighs?|legs?|crotch|butt|seat|inseam)\b/i],
+ ["Petite or smaller frame","Customers who mention being petite, short or small-framed.",/(petite|i'?m short|short person|\b5'|\b5 ?ft|five foot|small frame|my frame|height|little guy)/i],
+ ["Inconsistent with other Marine Layer sizing","Same size fits differently from their other ML pieces, colors or usual size.",/(other (ml|marine|colou?rs?|brands?|shirts?|pants?|tees?|sweat\w*|ones)|my other|same size|usual|normal(ly)?|always wear|than (my|the|other|usual|i)|runs (large|big|huge|small)|in black|different|compared|i have (this|the|a))/i],
+ ["Sized down or exchanged","They kept, ordered or want a different size, often a smaller one.",/(smaller size|size down|sized down|exchang\w*|replacement|ordered (a|the|another|2|two|both)|(2|two|multiple|both) sizes|kept (the|a)|keeping (the|one|a)|trying (a|the)|try (a|the)|preferred the|fits better|re-?order|should('?ve| have) (got|gotten|ordered)|need(ed)? (a|an|the)? ?(small|smaller|xs|medium|m|l|large)\b|getting a|bought (a|the|another)|purchased another|\bxs\b|extra small)/i],
+ ["Unflattering silhouette","The fit looked wrong on them: frumpy, unflattering, odd proportions.",/(flatter\w*|frump\w*|shape\w*|proportion\w*|sit (right|nicely|well)|didn'?t sit|look(ed|s)? (bigger|wide|heavy|pregnant|like)|matronly|sloppy|didn'?t suit|doesn'?t suit|boxy in a bad)/i],
+ ["General “didn’t fit right”","Fit was off without saying how: wrong size, didn’t fit right.",/(wrong size|didn'?t fit|did not fit|not (the right|a good) fit|fit (was )?(off|weird|wrong)|fit right|fit weird|not right)/i],
+];
+function themesOf(r){if(!r._th){const m=THEMES.filter(t=>t[2].test(r.comment)).map(t=>t[0]);r._th=m.length?m:["Other"];}return r._th;}
+let C_ROWS=[];
+function renderComments(){
+  const all=scopeRet().filter(r=>r.comment&&FIT_REASONS.includes(r.reason));
+  const jdfC=all.filter(r=>r.reason===JDF);
+  const jdfItems=scopeRet().reduce((a,r)=>a+(r.reason===JDF?r.n:0),0);
+  if(S.cSrc===null) S.cSrc=jdfC.length>=30?"jdf":"fit";
+  const src=S.cSrc==="jdf"?jdfC:all; C_ROWS=src;
+  const byReason=new Map();for(const r of all)byReason.set(r.reason,(byReason.get(r.reason)||0)+1);
+  const reasonTxt=[...byReason.entries()].filter(([k])=>k!==JDF).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`“${esc(k.replace(/^It was |^The /,"").replace(/^body was /,"body "))}” (${fmt(v)})`).join(", ");
+  const th=new Map(THEMES.map(t=>[t[0],{name:t[0],desc:t[1],n:0,items:0,M:0,W:0,styles:new Map(),rows:[]}]));th.set("Other",{name:"Other",desc:"Comments that didn’t match a theme.",n:0,items:0,M:0,W:0,styles:new Map(),rows:[]});
+  for(const r of src)for(const k of themesOf(r)){const o=th.get(k);o.n++;o.items+=r.n;o[r.gender==="Mens"?"M":"W"]++;o.styles.set(r.title,(o.styles.get(r.title)||0)+1);o.rows.push(r);}
+  const ts=[...th.values()].filter(o=>o.n).sort((a,b)=>(a.name==="Other")-(b.name==="Other")||b.n-a.n);
+  const tmax=Math.max(1,...ts.map(o=>o.n));
+  const nM=src.filter(r=>r.gender==="Mens").length,nW=src.length-nM;
+  const sty=new Map();for(const r of src){let o=sty.get(r.title);if(!o){o={title:r.title,g:r.gender,n:0,th:new Map()};sty.set(r.title,o);}o.n++;for(const k of themesOf(r))if(k!=="Other"&&k!=="Too big overall"&&k!=="General “didn’t fit right”")o.th.set(k,(o.th.get(k)||0)+1);}
+  const sl=[...sty.values()].sort((a,b)=>b.n-a.n).slice(0,15);
+  const share=k=>src.length?th.get(k).n/src.length:0;
+  const quotes=o=>{const seen=new Set(),out=[];for(const r of [...o.rows].filter(r=>r.comment.length>=30&&r.comment.length<=170).sort((a,b)=>b.comment.length-a.comment.length)){const ck=r.comment.toLowerCase();if(seen.has(r.title)||seen.has(ck))continue;seen.add(r.title);seen.add(ck);out.push(r);if(out.length===3)break;}return out;};
+  const q=(r)=>`<blockquote>“${esc(r.comment)}”<small>${esc(r.title)}, ${esc(r.size)}${r.color?" / "+esc(r.color):""}</small></blockquote>`;
+  $("#p-comments").innerHTML=`
+  <div class="callout">
+    <div>
+      <h2>${fmt(jdfC.length)} comment${jdfC.length===1?"":"s"} on ${fmt(jdfItems)} “just didn’t fit” returns</h2>
+      <p>Customers who pick “It just didn’t fit” almost never explain why, so there’s little to aggregate for that reason on its own. Those who pick a specific fit reason do write in: ${reasonTxt||"none in this view"}.</p>
+      <p>Those comments are the closest read on what “didn’t fit” means in practice, so this tab summarizes them. Switch to “Just didn’t fit” to see that reason alone.</p>
+      <div class="seg" id="cSrc" role="group" aria-label="Comments to include"><button data-k="fit" aria-pressed="${S.cSrc==="fit"}">All fit reasons (${fmt(all.length)})</button><button data-k="jdf" aria-pressed="${S.cSrc==="jdf"}">Just didn’t fit (${fmt(jdfC.length)})</button></div>
+    </div>
+    <div>${jdfC.length?jdfC.slice(0,3).map(q).join("")+(jdfC.length>3?`<p>Plus ${fmt(jdfC.length-3)} more in the list below.</p>`:""):`<p>No “just didn’t fit” comments in this view.</p>`}</div>
+  </div>
+  ${src.length?`
+  <div class="kpis">
+    <div class="kpi"><b>${fmt(src.length)}</b><span class="l">Comments summarized</span><span class="c">${fmt(nM)} men’s, ${fmt(nW)} women’s</span></div>
+    <div class="kpi"><b>${pct(share("Too big overall"),0)}</b><span class="l">Say it’s too big</span><span class="c">Oversized, baggy or loose</span></div>
+    <div class="kpi"><b>${pct(share("Sized down or exchanged"),0)}</b><span class="l">Kept or want another size</span><span class="c">A sale that could be saved by better size guidance</span></div>
+    <div class="kpi"><b>${pct(share("Inconsistent with other Marine Layer sizing"),0)}</b><span class="l">Say sizing is inconsistent</span><span class="c">Versus their other ML pieces or colors</span></div>
+  </div>
+  <div class="grid g3" style="margin-bottom:20px">
+    <div class="box"><h2>What customers say</h2><p class="sub">Share of comments that mention each theme. A comment can mention several. Select a theme to read those comments.</p>
+      <div class="bars">${ts.map(o=>`<div class="bar clk" data-theme="${esc(o.name)}" tabindex="0"><span class="lbl" title="${esc(o.desc)}">${esc(o.name)}</span><span class="trk"><i style="width:${o.n/tmax*100}%;background:${o.name==="Other"?"var(--other)":"var(--jdf)"}"></i></span><span class="val"><b>${fmt(o.n)}</b> · ${pct(o.n/src.length,0)}</span></div>`).join("")}</div></div>
+    <div class="box"><h2>Men’s vs. women’s</h2><p class="sub">Share of each department’s comments that mention the theme.</p>
+      <div class="scroll"><table><thead><tr><th>Theme</th><th class="num">Men’s</th><th class="num">Women’s</th></tr></thead><tbody>
+      ${ts.filter(o=>o.name!=="Other").map(o=>{const m=nM?o.M/nM:0,w=nW?o.W/nW:0;return `<tr><td>${esc(o.name)}</td><td class="num"${m>w*1.4&&o.M>=10?' style="color:var(--mens);font-weight:600"':""}>${nM?pct(m,0):"–"}</td><td class="num"${w>m*1.4&&o.W>=10?' style="color:var(--womens);font-weight:600"':""}>${nW?pct(w,0):"–"}</td></tr>`}).join("")}
+      </tbody></table></div><p class="sub" style="margin:10px 0 0">Colored where one department mentions it at least 1.4× as often.</p></div>
+  </div>
+  <div class="box" style="margin-bottom:20px"><h2>Styles with the most fit comments</h2><p class="sub">The specific problems customers name for each style, beyond “too big”. Select a style for its full breakdown.</p>
+    <div class="scroll"><table><thead><tr><th>Style</th><th>Dept</th><th class="num">Comments</th><th>Most-mentioned specifics</th></tr></thead><tbody>
+    ${sl.map((o,i)=>`<tr class="clk" data-style="${esc(o.title)}"><td><span class="cellstyle"><span class="rank">${i+1}</span>${esc(o.title)}</span></td><td><span class="dept ${o.g}">${deptLabel(o.g)}</span></td><td class="num">${fmt(o.n)}</td><td style="color:var(--ink2)">${[...o.th.entries()].sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k,v])=>`${esc(k)} (${v})`).join(", ")||"Mostly “too big” with no specifics"}</td></tr>`).join("")}
+    </tbody></table></div></div>
+  <h2>Themes in detail</h2><p class="sub">Open a theme for the styles that come up most and example comments.</p>
+  <div style="margin-bottom:24px">${ts.filter(o=>o.name!=="Other").map(o=>{const top=[...o.styles.entries()].sort((a,b)=>b[1]-a[1]).slice(0,5);return `
+   <details class="cat"><summary><span class="chev">▼</span><span class="nm">${esc(o.name)}</span><span class="meta hide-sm">${esc(o.desc)}</span><span class="meta hide-sm"></span><span class="meta"><b style="color:var(--ink)">${fmt(o.n)}</b> comments</span></summary>
+   <div class="inner"><div class="grid g2"><div><h3>Styles mentioned most</h3><div class="bars" style="margin-top:8px">${top.map(([k,v])=>`<div class="bar clk" data-style="${esc(k)}" tabindex="0"><span class="lbl" title="${esc(k)}">${esc(k)}</span><span class="trk"><i style="width:${v/top[0][1]*100}%;background:var(--fit)"></i></span><span class="val"><b>${v}</b></span></div>`).join("")}</div></div>
+   <div><h3>In their words</h3><ul class="thq">${quotes(o).map(r=>`<li>“${esc(r.comment)}”<br><small>${esc(r.title)}, ${esc(r.size)}</small></li>`).join("")}</ul></div></div></div></details>`}).join("")}</div>
+  <div class="box"><h2>Read the comments</h2><p class="sub">Filter by theme or search for a style, size or word.</p>
+    <div class="filters" style="margin-bottom:10px"><input type="search" id="cQ" style="width:min(360px,100%)" placeholder="Search comments or styles" value="${esc(S.cQ)}" aria-label="Search comments"></div>
+    <div class="chips" id="cChips" style="margin-bottom:14px">${["All",...ts.map(o=>o.name)].map(k=>`<button class="chip" data-chip="${esc(k)}" aria-pressed="${S.cTheme===k}">${esc(k)}</button>`).join("")}</div>
+    <div id="cList"></div></div>`:`<p class="empty">No comments to summarize in this view. Switch to “All fit reasons” or change the department filter.</p>`}`;
+  document.querySelectorAll("#cSrc button").forEach(b=>b.onclick=()=>{S.cSrc=b.dataset.k;S.cTheme="All";renderComments();});
+  if(!src.length) return;
+  $("#cQ").oninput=e=>{S.cQ=e.target.value;S.cLimit=60;renderCommentList();};
+  document.querySelectorAll("#cChips .chip").forEach(b=>b.onclick=()=>setCTheme(b.dataset.chip,false));
+  renderCommentList();
+}
+function setCTheme(k,scroll){S.cTheme=k;S.cLimit=60;document.querySelectorAll("#cChips .chip").forEach(c=>c.setAttribute("aria-pressed",c.dataset.chip===k));renderCommentList();if(scroll)$("#cChips").scrollIntoView({behavior:"smooth",block:"center"});}
+function renderCommentList(){
+  const q=S.cQ.trim().toLowerCase();
+  const list=C_ROWS.filter(r=>(S.cTheme==="All"||themesOf(r).includes(S.cTheme))&&(!q||(r.comment+" "+r.title+" "+r.size+" "+r.color).toLowerCase().includes(q)));
+  $("#cList").innerHTML=list.length?`<p class="sub" style="margin-bottom:8px">${fmt(list.length)} comments</p><div class="comments" style="max-height:none">${list.slice(0,S.cLimit).map(r=>`<div class="comment">“${esc(r.comment)}”<small><span class="dept ${r.gender}">${r.gender==="Mens"?"M":"W"}</span> <a href="#" data-style="${esc(r.title)}">${esc(r.title)}</a>, ${esc(r.size)}${r.color?" / "+esc(r.color):""} · ${esc(r.reason)}</small></div>`).join("")}</div>${list.length>S.cLimit?`<button class="btn" id="cMore" style="margin-top:12px">Show ${fmt(Math.min(100,list.length-S.cLimit))} more</button>`:""}`:`<p class="empty">No comments match. Clear the search or pick another theme.</p>`;
+  const m=$("#cMore");if(m)m.onclick=()=>{S.cLimit+=100;renderCommentList();};
+}
+
 /* ---------- Every style tab ---------- */
 function renderStyles(){
   const t=totals(scopeRet());
@@ -561,7 +664,7 @@ function openStyle(title){
 
 /* ---------- render orchestration ---------- */
 function renderAll(){
-  renderDrivers(); renderStyles(); renderDept("Mens"); renderDept("Womens"); renderSizes(); renderQuality();
+  renderDrivers(); renderComments(); renderStyles(); renderDept("Mens"); renderDept("Womens"); renderSizes(); renderQuality();
   const t=totals(RET);
   $("#foot").innerHTML=`<p><b>How to read this.</b> Every percentage here is a share of <i>returned items</i>, not a return rate: the sheet has returns but not units sold, so a high-volume style can rank high partly because it sells a lot. That’s why the dashboard shows both volume and the share of each style’s returns that were “just didn’t fit”. Adding units sold per style would turn these into true return rates.</p>
    <p>Styles are grouped by product title, combining all colors and sizes. Marine Layer’s Marge and Larger sizes sit between M/L and L/XL. Sizing signals appear when 10+ customers gave a specific direction and one side outnumbers the other by 1.6×. Data: ${fmt(RET.length)} return rows (${fmt(t.tot)} items) and ${FB.length} quality reports.</p>`;
@@ -569,6 +672,7 @@ function renderAll(){
 
 /* ---------- events ---------- */
 document.addEventListener("click",e=>{
+  const th=e.target.closest("[data-theme]"); if(th){setCTheme(th.dataset.theme,true);return;}
   const st=e.target.closest("[data-style]"); if(st){e.preventDefault();openStyle(st.dataset.style);return;}
   const tab=e.target.closest(".tab"); if(tab){setTab(tab.dataset.tab);return;}
   const g=e.target.closest("#genderSeg button"); if(g){S.gender=g.dataset.g;document.querySelectorAll("#genderSeg button").forEach(b=>b.setAttribute("aria-pressed",b===g));renderAll();}
@@ -598,7 +702,7 @@ $("#file").addEventListener("change",async e=>{
     if(gotRet) RET=ingestReturns(gotRet);
     const fbSource=gotFb||null;
     if(fbSource) FB=ingestFeedback(fbSource,skuMap()); else FB=ingestFeedback(FB.map(f=>({"Category":f.gender==="Mens"?"Men's":"Women's","Subcategory":f.sub,"Item Name + Color":f.item,"SKU":f.sku,"Quality Issue":f.issueRaw,"Additional Feedback":f.feedback,"Photos":f.photos.join(", ")})),skuMap());
-    buildStyles(); renderAll();
+    S.cSrc=null; buildStyles(); renderAll();
     msg.textContent=`Loaded ${[gotRet?fmt(gotRet.length)+" return rows":"",gotFb?gotFb.length+" quality reports":""].filter(Boolean).join(" and ")}`;
     $("#srcLine").textContent="Showing uploaded data";
   }catch(err){msg.textContent="Couldn’t read that file. Upload the .xlsx export or a .csv of one sheet.";console.error(err);}
